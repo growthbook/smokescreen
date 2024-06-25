@@ -30,14 +30,13 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 
 func startHealthCheckServer() {
 	http.HandleFunc("/healthcheck", healthCheckHandler)
-	// Run the health check server on a different port
+	// Run the health check server on a different port than smokescreen proxy
 	go func() {
 		log.Fatal(http.ListenAndServe(":4751", nil))
 	}()
 }
 
 func main() {
-	// Register the health check route
 	startHealthCheckServer()
 
 	conf, err := cmd.NewConfiguration(nil, nil)
