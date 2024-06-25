@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -23,7 +24,22 @@ func defaultRoleFromRequest(req *http.Request) (string, error) {
 	return req.TLS.PeerCertificates[0].Subject.CommonName, nil
 }
 
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "OK")
+}
+
+func startHealthCheckServer() {
+	http.HandleFunc("/healthcheck", healthCheckHandler)
+	// Run the health check server on a different port
+	go func() {
+		log.Fatal(http.ListenAndServe(":4751", nil))
+	}()
+}
+
 func main() {
+	// Register the health check route
+	startHealthCheckServer()
+
 	conf, err := cmd.NewConfiguration(nil, nil)
 	if err != nil {
 		logrus.Fatalf("Could not create configuration: %v", err)

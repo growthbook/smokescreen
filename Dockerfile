@@ -12,5 +12,7 @@ COPY --from=builder /go/src/app/smokescreen /usr/local/bin/smokescreen
 RUN apk add --no-cache gcompat
 
 EXPOSE 4750
+# For the health check
+EXPOSE 4751 
 
 CMD ["smokescreen"]
