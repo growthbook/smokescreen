@@ -1,0 +1,107 @@
+#!/bin/bash
+
+echo "Ensure the script is run as root"
+if [ "$(id -u)" -ne 0 ]; then
+  echo "This script must be run as root" 1>&2
+  exit 1
+fi
+
+echo "Check if DD_API_KEY is set"
+if [ -z "$DD_API_KEY" ]; then
+  echo "DD_API_KEY environment variable is not set. Exiting."
+  exit 1
+fi
+
+echo "Install Go"
+yum update -y
+yum install -y golang
+
+echo "Set up Go environment"
+export GOPATH=/usr/local/go
+export PATH=$PATH:$GOPATH/bin
+
+echo "Install Datadog Agent"
+DD_API_KEY=$DD_API_KEY DD_SITE="us5.datadoghq.com"  bash -c "$(curl -L https://s3.amazonaws.com/dd-agent/scripts/install_script_agent7.sh)"
+
+echo "Install CloudWatch Logs agent"
+yum install -y amazon-cloudwatch-agent
+
+echo "Assuming the current directory contains the smokescreen source"
+go build -o /usr/local/bin/smokescreen .
+
+echo "Create a log file for smokescreen stderr output"
+mkdir -p /var/log/smokescreen
+chown root:root /var/log/smokescreen
+
+echo "Create logrotate configuration for smokescreen"
+cat <<EOF > /etc/logrotate.d/smokescreen
+/var/log/smokescreen/smokescreen.log {
+    daily
+    missingok
+    rotate 90
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    postrotate
+        echo "Reload CloudWatch Agent to ensure it continues to monitor the new log file"
+        systemctl restart amazon-cloudwatch-agent.service
+    endscript
+}
+EOF
+
+echo "Create a systemd service file for smokescreen"
+cat <<EOF > /etc/systemd/system/smokescreen.service
+[Unit]
+Description=Smokescreen Service
+After=network.target datadog-agent.service
+
+[Service]
+ExecStart=/usr/local/bin/smokescreen --statsd-address 127.0.0.1:8125
+StandardError=append:/var/log/smokescreen/smokescreen.log
+Restart=always
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "CloudWatch agent configuration file"
+cat <<EOF > /opt/aws/amazon-cloudwatch-agent/bin/config.json
+{
+    "agent": {
+        "run_as_user": "root"
+    },
+    "logs": {
+        "logs_collected": {
+            "files": {
+                "collect_list": [
+                    {
+                        "file_path": "/var/log/smokescreen/smokescreen.log",
+                        "log_group_class": "STANDARD",
+                        "log_group_name": "smokescreen",
+                        "log_stream_name": "{instance_id}",
+                        "retention_in_days": 90
+                    }
+                ]
+            }
+        }
+    }
+}
+EOF
+
+echo "Start the CloudWatch Logs agent"
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/bin/config.json -s
+
+echo "Reload systemd to recognize the new service"
+systemctl daemon-reload
+
+echo "Enable and start the Datadog Agent service"
+systemctl enable datadog-agent.service
+systemctl start datadog-agent.service
+
+echo "Enable the service to start on boot and start the service"
+systemctl enable smokescreen.service
+systemctl start smokescreen.service
+
+echo "Smokescreen service has been started and enabled to restart on failure. Logs will be sent to CloudWatch."
