@@ -748,6 +748,14 @@ func runServer(config *Config, server *http.Server, listener net.Listener, quit 
 		config.StatsServer = StartStatsServer(config)
 	}
 
+	// Every 10s send a metric to the statsd server to indicate that the service is running.
+	go func() {
+		for {
+			config.MetricsClient.Gauge("service.running", 1, 1)
+			time.Sleep(10 * time.Second)
+		}
+	}()
+
 	graceful := true
 	kill := make(chan os.Signal, 1)
 	signal.Notify(kill, syscall.SIGUSR2, syscall.SIGTERM, syscall.SIGHUP)
