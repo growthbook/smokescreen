@@ -57,8 +57,7 @@ Description=Smokescreen Service
 After=network.target datadog-agent.service
 
 [Service]
-ExecStart=/usr/local/bin/smokescreen --statsd-address 127.0.0.1:8125
-StandardError=append:/var/log/smokescreen/smokescreen.log
+ExecStart=/bin/sh -c '/usr/local/bin/smokescreen --statsd-address 127.0.0.1:8125 >> /var/log/smokescreen/smokescreen.log 2>&1'
 Restart=always
 RestartSec=1s
 
