@@ -43,6 +43,7 @@ cat <<EOF > /etc/logrotate.d/smokescreen
     delaycompress
     notifempty
     create 0640 root root
+    copytruncate
     postrotate
         echo "Reload CloudWatch Agent to ensure it continues to monitor the new log file"
         systemctl restart amazon-cloudwatch-agent.service
